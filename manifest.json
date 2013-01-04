@@ -1,0 +1,28 @@
+{
+  "name": "UMBC Share Schedule",
+  "version": "1.0",
+  "manifest_version": 2,
+  "description": "Easily share your schedule with your friends directly or through Facebook.",
+  "background": {"scripts" : ["background.js"]},
+  "content_scripts": [
+    {
+      "matches": ["https://csprd-web.ps.umbc.edu/psp/csprd/EMPLOYEE/HRMS/*"],
+      "all_frames": true,
+      "js": ["parent_content.js"]
+    },
+    {
+      "matches": ["https://csprd-web.ps.umbc.edu/psc/csprd/EMPLOYEE/HRMS/*"],
+      "all_frames": true,
+      "js": ["frame_content.js"]
+    }
+  ],
+  "permissions": [
+    "tabs",
+    "clipboardWrite",
+    "https://csprd-web.ps.umbc.edu/psp/csprd/EMPLOYEE/HRMS/*",
+    "https://csprd-web.ps.umbc.edu/psc/csprd/EMPLOYEE/HRMS/*",
+    "https://ps.umbc.edu/*",
+    "http://ps.umbc.edu/*",
+    "https://*.ps.umbc.edu/*"
+  ]
+}
