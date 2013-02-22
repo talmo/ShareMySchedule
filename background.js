@@ -22,12 +22,15 @@ chrome.extension.onMessage.addListener(
             document.execCommand("Copy");
 
         // Takes a screenshot of the schedule table
-        } else if (request["msg"] == "scrollPage") {
-            console.log("Screenshot processing in background.js");
+        } else if (request["msg"] == "screenshot") {
+            var width = request["width"];
+            var height = request["height"];
+            console.log("Screenshot processing in background.js ("+ width+"x"+height+")");
+            
             // Create a canvas for the screenshot
             canvas = document.createElement("canvas");
-            canvas.width = 1165;
-            canvas.height = 567;
+            canvas.width = width;
+            canvas.height = height;
             ctx = canvas.getContext("2d");
             // Capture the screen and save it to an image
             chrome.tabs.captureVisibleTab(
@@ -36,8 +39,7 @@ chrome.extension.onMessage.addListener(
                         var image = new Image();
                         image.onload = function() {
                             console.log("Image loaded.");
-                            //ctx.drawImage(image, 0, 0);
-                            ctx.drawImage(image, 24, 390, 1165, 567, 0, 0, 1165, 567);   // TODO: dynamic cropping
+                            ctx.drawImage(image, 24, 390, width, height, 0, 0, width, height);
                             dataURI = canvas.toDataURL();
                             //saveBlob(canvas.toDataURL()); // TODO: fix saving
                             // Open the screenshot

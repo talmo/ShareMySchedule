@@ -105,88 +105,6 @@ function injectScript(source)
         return (elem);
 }
 
-function getPositions(cb) {
-    var body = document.body,
-        fullWidth = document.width,
-        fullHeight = document.height,
-        windowWidth = window.innerWidth,
-        windowHeight = window.innerHeight,
-        arrangements = [],
-        // pad the vertical scrolling to try to deal with
-        // sticky headers, 250 is an arbitrary size
-        scrollPad = 200,
-        yDelta = windowHeight - (windowHeight > scrollPad ? scrollPad : 0),
-        xDelta = windowWidth,
-        yPos = fullHeight - yDelta + 1,
-        xPos,
-        numArrangements,
-        canvas = document.createElement('canvas'),
-        ctx;
-    canvas.width = fullWidth;
-    canvas.height = fullHeight;
-    ctx = canvas.getContext('2d');
-
-    while (yPos > -yDelta) {
-        xPos = 0;
-        while (xPos < fullWidth) {
-            arrangements.push([xPos, yPos]);
-            xPos += xDelta;
-        }
-        yPos -= yDelta;
-    }
-
-    /** * /
-    console.log('fullHeight', fullHeight, 'fullWidth', fullWidth);
-    console.log('windowWidth', windowWidth, 'windowHeight', windowHeight);
-    console.log('xDelta', xDelta, 'yDelta', yDelta);
-    var arText = [];
-    arrangements.forEach(function(x) { arText.push('['+x.join(',')+']'); });
-    console.log('arrangements', arText.join(', '));
-    /**/
-
-    numArrangements = arrangements.length;
-
-    (function scrollTo() {
-        if (!arrangements.length) {
-            window.scrollTo(0, 0);
-            chrome.extension.sendRequest({msg: 'openPage'}, function(response) {
-            });
-            return cb && cb();
-        }
-
-        var next = arrangements.shift(),
-            x = next[0], y = next[1];
-
-        window.scrollTo(x, y);
-
-        var data = {
-            msg: 'capturePage',
-            x: window.scrollX,
-            y: window.scrollY,
-            width: windowWidth,
-            height: windowHeight,
-            complete: (numArrangements-arrangements.length)/numArrangements,
-            totalWidth: fullWidth,
-            totalHeight: fullHeight
-        };
-
-        // need to wait for scrollbar to disappear
-        return window.setTimeout(function() {
-            chrome.extension.sendRequest(data, function(response) {
-                // when there's an error in popup.js, the
-                // response is `undefined`. this can happen
-                // if you click the page to close the popup
-                if (typeof(response) != 'undefined') {
-                    scrollTo();
-                }
-            });
-        }, 1000);
-    })();
-}
-
-function screenshot() {
-  window.postMessage({ type: "FROM_PAGE", text: "screenshot" }, "*");
-}
 
 // Generates the HTML content of the div that contains the text of the classes
 // The parameters are booleans indicating whether each specified piece of data will be displayed
@@ -204,7 +122,8 @@ function generateClassesText(code, title, times, sections, instructor, location,
         if (code) {uiHTML += " - "}
         uiHTML += classes[i][0].slice(classes[i][0].indexOf("-")+1, classes[i][0].length);
       }
-      uiHTML += "</strong>: ";
+      uiHTML += "</strong>";
+      if (times || sections || instructor || location || component) {uiHTML += ": ";}
 
       // Loop through each section
       for (var e = 0, len = classes[i][2].length; e < len; e++) {
@@ -231,7 +150,7 @@ function generateClassesText(code, title, times, sections, instructor, location,
           if (times || instructor) {uiHTML += " @ "} 
           uiHTML += classes[i][2][e][3]}
         // Add comma if not the last section
-        if (e + 1 < len) {uiHTML += ", ";}
+        if (e + 1 < len && (times || sections || instructor || location || component)) {uiHTML += ", ";}
       }
       uiHTML += "<br>";
     }
@@ -243,6 +162,13 @@ function generateClassesText(code, title, times, sections, instructor, location,
 // This function will be injected into the page so it can run under that context
 function copyClasses() {
   window.postMessage({ type: "FROM_PAGE", text: document.querySelector("#classesDiv").innerText }, "*");
+  button = document.getElementById("copyButton");
+  button.innerText = "Copied!";
+  setTimeout(function() { button.innerText = "Copy"; }, 1500);
+}
+
+function screenshot() {
+  window.postMessage({ type: "FROM_PAGE", text: "screenshot" }, "*");
 }
 
 // Tests the HTML against our regex to determine if we're in 'List View' or 'Weekly Calendar View' (or neither)
@@ -293,23 +219,17 @@ if (listViewRegex.test(document.body.innerHTML)) { // List view was detected
   ui = document.createElement("div");
   ui.setAttribute("id", "weeklyView");
   ui.setAttribute("class", "uiContainer");
-  // Styling
-  // ui.style.position = "absolute";
-  // ui.style.top = "20px";
-  // ui.style.left = "655px";
-  // ui.style.fontSize = "12px";
-  // Construct the HTML of the interface
-  // TODO: External CSS styling
   uiHTML =  '<h1>My Schedule <small><em>Tip:</em> You can edit the box below.</small></h1>' +
             '<div id="classesDiv" contenteditable="true"></div>' +
             '<div>' +
               '<strong>Display:</strong> ' +
               // For reference: generateClassesText(code, title, times, sections, instructor, location, component)
-              '<a href="javascript:generateClassesText(false, true, true, false, false, false, false)">Minimal</a> ' +
+              '<a href="javascript:generateClassesText(true, true, false, false, false, false, false)">Minimal</a> ' +
+              '<a href="javascript:generateClassesText(true, false, true, false, false, false, false)">Code and Times</a> ' +
               '<a href="javascript:generateClassesText(true, false, false, true, false, false, true)">Sect. + Code</a> ' +
               '<a href="javascript:generateClassesText(true, true, true, true, true, true, true)">Everything</a>' +
               '<br><strong>Share:</strong> ' +
-              '<a href="javascript:copyClasses()">Copy</a> ' +
+              '<a id="copyButton" href="javascript:copyClasses()">Copy</a> ' +
               '<a href="javascript:postToFB()">Post to Facebook</a>' +
             '</div>';
   ui.innerHTML = uiHTML;
@@ -350,13 +270,6 @@ if (listViewRegex.test(document.body.innerHTML)) { // List view was detected
   ui = document.createElement("div");
   ui.setAttribute("id", "scheduleView");
   ui.setAttribute("class", "uiContainer");
-  // Styling
-  // ui.style.position = "absolute";
-  // ui.style.top = "20px";
-  // ui.style.left = "655px";
-  // ui.style.fontSize = "12px";
-  // Construct the HTML of the interface
-  // TODO: External CSS styling
   uiHTML =  '<a href="javascript:screenshot()">Screenshot</a>';
   ui.innerHTML = uiHTML;
   // Add the ui to the page
@@ -364,7 +277,7 @@ if (listViewRegex.test(document.body.innerHTML)) { // List view was detected
 
   // Inject the screenshot() function
   injectScript("" + screenshot);
-
+  
   // Get message from page
   var port = chrome.extension.connect();
   window.addEventListener("message", function(event) {
@@ -372,7 +285,11 @@ if (listViewRegex.test(document.body.innerHTML)) { // List view was detected
       if (event.source != window)
         return;
       if (event.data.type && (event.data.type == "FROM_PAGE")) {
-        sendScrollMessage();
+        // Calculate width and height of the table for cropping
+        var width = document.getElementById("WEEKLY_SCHED_HTMLAREA").offsetWidth;
+        var height = document.getElementById("WEEKLY_SCHED_HTMLAREA").offsetHeight;
+        // Send the message (will be received by background.js)
+        chrome.extension.sendMessage({msg: "screenshot", width: width, height: height}, function(response) {});
         // Debugging
         console.log("Received message from page:");
         console.log(event.data.text);
@@ -386,19 +303,4 @@ if (listViewRegex.test(document.body.innerHTML)) { // List view was detected
 } else { // Neither of the views were detected
   // Debugging
   console.log("No schedule detected in iframe.");
-}
-
-//
-// Events
-//
-
-function sendScrollMessage() {
-    screenshot = {};
-    chrome.extension.sendMessage({msg: 'scrollPage'}, function(response) {});
-}
-
-function onScrollMessage(request, sender, callback) {
-    if (request.msg == 'scrollPage') {
-        getPositions(callback);
-    }
 }
