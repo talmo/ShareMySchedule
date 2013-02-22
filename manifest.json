@@ -13,7 +13,8 @@
     {
       "matches": ["https://csprd-web.ps.umbc.edu/psc/csprd/EMPLOYEE/HRMS/*"],
       "all_frames": true,
-      "js": ["frame_content.js"]
+      "js": ["frame_content.js"],
+      "css": ["style.css"]
     }
   ],
   "permissions": [

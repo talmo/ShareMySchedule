@@ -105,6 +105,89 @@ function injectScript(source)
         return (elem);
 }
 
+function getPositions(cb) {
+    var body = document.body,
+        fullWidth = document.width,
+        fullHeight = document.height,
+        windowWidth = window.innerWidth,
+        windowHeight = window.innerHeight,
+        arrangements = [],
+        // pad the vertical scrolling to try to deal with
+        // sticky headers, 250 is an arbitrary size
+        scrollPad = 200,
+        yDelta = windowHeight - (windowHeight > scrollPad ? scrollPad : 0),
+        xDelta = windowWidth,
+        yPos = fullHeight - yDelta + 1,
+        xPos,
+        numArrangements,
+        canvas = document.createElement('canvas'),
+        ctx;
+    canvas.width = fullWidth;
+    canvas.height = fullHeight;
+    ctx = canvas.getContext('2d');
+
+    while (yPos > -yDelta) {
+        xPos = 0;
+        while (xPos < fullWidth) {
+            arrangements.push([xPos, yPos]);
+            xPos += xDelta;
+        }
+        yPos -= yDelta;
+    }
+
+    /** * /
+    console.log('fullHeight', fullHeight, 'fullWidth', fullWidth);
+    console.log('windowWidth', windowWidth, 'windowHeight', windowHeight);
+    console.log('xDelta', xDelta, 'yDelta', yDelta);
+    var arText = [];
+    arrangements.forEach(function(x) { arText.push('['+x.join(',')+']'); });
+    console.log('arrangements', arText.join(', '));
+    /**/
+
+    numArrangements = arrangements.length;
+
+    (function scrollTo() {
+        if (!arrangements.length) {
+            window.scrollTo(0, 0);
+            chrome.extension.sendRequest({msg: 'openPage'}, function(response) {
+            });
+            return cb && cb();
+        }
+
+        var next = arrangements.shift(),
+            x = next[0], y = next[1];
+
+        window.scrollTo(x, y);
+
+        var data = {
+            msg: 'capturePage',
+            x: window.scrollX,
+            y: window.scrollY,
+            width: windowWidth,
+            height: windowHeight,
+            complete: (numArrangements-arrangements.length)/numArrangements,
+            totalWidth: fullWidth,
+            totalHeight: fullHeight
+        };
+
+        // need to wait for scrollbar to disappear
+        return window.setTimeout(function() {
+            chrome.extension.sendRequest(data, function(response) {
+                // when there's an error in popup.js, the
+                // response is `undefined`. this can happen
+                // if you click the page to close the popup
+                if (typeof(response) != 'undefined') {
+                    scrollTo();
+                }
+            });
+        }, 1000);
+    })();
+}
+
+function screenshot() {
+  window.postMessage({ type: "FROM_PAGE", text: "screenshot" }, "*");
+}
+
 // Generates the HTML content of the div that contains the text of the classes
 // The parameters are booleans indicating whether each specified piece of data will be displayed
 // This function will be injected into the page so it can run under that context
@@ -165,6 +248,10 @@ function copyClasses() {
 // Tests the HTML against our regex to determine if we're in 'List View' or 'Weekly Calendar View' (or neither)
 var listViewRegex = /win0divDERIVED_REGFRM1_SA_STUDYLIST_SHOW/; // this is from the 'View Textbooks' link, which I'm fairly certain only appears in this view
 var weeklyViewRegex = /DERIVED_CLASS_S_SSR_REFRESH_CAL/; // this is from the 'Refresh Calendar' button in weekly view
+
+/////////////////////////////////////////////////////////////////////////////////
+/////////////////////////////////// List View ///////////////////////////////////
+/////////////////////////////////////////////////////////////////////////////////
 if (listViewRegex.test(document.body.innerHTML)) { // List view was detected
   // Initialize classes object; this will contain all the information for the classes processed from the DOM
   var classes = [];
@@ -204,31 +291,33 @@ if (listViewRegex.test(document.body.innerHTML)) { // List view was detected
   
   // Create the floating container for the extension's interface
   ui = document.createElement("div");
+  ui.setAttribute("id", "weeklyView");
+  ui.setAttribute("class", "uiContainer");
   // Styling
-  ui.style.position = "absolute";
-  ui.style.top = "20px";
-  ui.style.left = "655px";
-  ui.style.fontSize = "12px";
+  // ui.style.position = "absolute";
+  // ui.style.top = "20px";
+  // ui.style.left = "655px";
+  // ui.style.fontSize = "12px";
   // Construct the HTML of the interface
   // TODO: External CSS styling
-  uiHTML =  '<strong>My Schedule</strong> <small><em>Tip:</em> You can edit the box below.</small>' +
-            '<div id="classesDiv" contenteditable="true" style="background-color:#F7F7F7; font-size:11px; padding:3px; border:2px dashed grey; border-radius:5px"></div>' +
+  uiHTML =  '<h1>My Schedule <small><em>Tip:</em> You can edit the box below.</small></h1>' +
+            '<div id="classesDiv" contenteditable="true"></div>' +
             '<div>' +
-            '<strong>Display:</strong> ' +
-            // For reference: generateClassesText(code, title, times, sections, instructor, location, component)
-            '<a href="javascript:generateClassesText(false, true, true, false, false, false, false)">Minimal</a> | ' +
-            '<a href="javascript:generateClassesText(true, false, false, true, false, false, true)">Sect. + Code</a> | ' +
-            '<a href="javascript:generateClassesText(true, true, true, true, true, true, true)">Everything</a>' +
-            '<br><strong>Share:</strong> ' +
-            '<a href="javascript:copyClasses()">Copy</a> | ' +
-            '<a href="javascript:postToFB()">Post to Facebook</a>' +
+              '<strong>Display:</strong> ' +
+              // For reference: generateClassesText(code, title, times, sections, instructor, location, component)
+              '<a href="javascript:generateClassesText(false, true, true, false, false, false, false)">Minimal</a> ' +
+              '<a href="javascript:generateClassesText(true, false, false, true, false, false, true)">Sect. + Code</a> ' +
+              '<a href="javascript:generateClassesText(true, true, true, true, true, true, true)">Everything</a>' +
+              '<br><strong>Share:</strong> ' +
+              '<a href="javascript:copyClasses()">Copy</a> ' +
+              '<a href="javascript:postToFB()">Post to Facebook</a>' +
             '</div>';
   ui.innerHTML = uiHTML;
   // Add the ui to the page
   document.body.appendChild(ui);
 
   // Inject scripts to the page so they can run in that context
-  // This is necessary because PeopleSoft monitors onkeypress/onkeydown/onkeyup events and throws authorization errors (ex: checkbox clicked -> auth error)
+  // This is necessary because PeopleSoft monitors onkeypress/onkeydown/onkeyup events and throws authorization errors (i.e.: checkbox clicked -> auth error)
   // Since event-binding is out, a workaround is to use links to invoke JS functions; in order to do this, those functions first need to be injected to the context of the page
   injectScript('classes = '  + JSON.stringify(classes) + ';' + // Inject the 'classes' object so it can be used by generateClassesText
   generateClassesText +  // Inject the function to generate the contents of classesDiv
@@ -251,13 +340,65 @@ if (listViewRegex.test(document.body.innerHTML)) { // List view was detected
       }
   }, false);
 
+/////////////////////////////////////////////////////////////////////////////////
+////////////////////////////////// Weekly View //////////////////////////////////
+/////////////////////////////////////////////////////////////////////////////////
 } else if (weeklyViewRegex.test(document.body.innerHTML)) { // Weekly view was detected
   console.log('Detected schedule page (Weekly view).');
-  // Send message to background with width of schedule table
-  // TODO: Move this to button/link on page instead of being called when page is ready
-  chrome.extension.sendMessage({screenshot: document.getElementsByClassName("PABACKGROUNDINVISIBLEWBO")[9].width}, function(response) {});
+
+  // Create the floating container for the extension's interface
+  ui = document.createElement("div");
+  ui.setAttribute("id", "scheduleView");
+  ui.setAttribute("class", "uiContainer");
+  // Styling
+  // ui.style.position = "absolute";
+  // ui.style.top = "20px";
+  // ui.style.left = "655px";
+  // ui.style.fontSize = "12px";
+  // Construct the HTML of the interface
+  // TODO: External CSS styling
+  uiHTML =  '<a href="javascript:screenshot()">Screenshot</a>';
+  ui.innerHTML = uiHTML;
+  // Add the ui to the page
+  document.body.appendChild(ui);
+
+  // Inject the screenshot() function
+  injectScript("" + screenshot);
+
+  // Get message from page
+  var port = chrome.extension.connect();
+  window.addEventListener("message", function(event) {
+      // We only accept messages from ourselves
+      if (event.source != window)
+        return;
+      if (event.data.type && (event.data.type == "FROM_PAGE")) {
+        sendScrollMessage();
+        // Debugging
+        console.log("Received message from page:");
+        console.log(event.data.text);
+      }
+  }, false);
+
+/////////////////////////////////////////////////////////////////////////////////
+/////////////////////////////////////////////////////////////////////////////////
+/////////////////////////////////////////////////////////////////////////////////
 
 } else { // Neither of the views were detected
   // Debugging
   console.log("No schedule detected in iframe.");
+}
+
+//
+// Events
+//
+
+function sendScrollMessage() {
+    screenshot = {};
+    chrome.extension.sendMessage({msg: 'scrollPage'}, function(response) {});
+}
+
+function onScrollMessage(request, sender, callback) {
+    if (request.msg == 'scrollPage') {
+        getPositions(callback);
+    }
 }
